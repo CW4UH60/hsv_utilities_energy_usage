@@ -62,7 +62,7 @@ async def validate_credentials(
         return {"title": f"HSV Utilities ({mask_identifier(service_location)})"}
 
     except Exception as err:
-        _LOGGER.exception(
+        _LOGGER.error(
             "Unexpected error validating credentials: %s",
             redact_for_log(err),
         )
@@ -100,7 +100,7 @@ class HSVUtilitiesEnergyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 _LOGGER.warning("Validation error: %s", redact_for_log(err))
                 errors["base"] = "invalid_auth"
             except Exception:  # pylint: disable=broad-except
-                _LOGGER.exception("Unexpected exception during validation")
+                _LOGGER.error("Unexpected exception during validation")
                 errors["base"] = "unknown"
             else:
                 # Create the entry

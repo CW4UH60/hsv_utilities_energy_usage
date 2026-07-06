@@ -115,7 +115,7 @@ class EnergyDataCoordinator(DataUpdateCoordinator):
             return self._read_aggregated_data()
 
         except Exception as err:
-            _LOGGER.exception("Error fetching energy data: %s", redact_for_log(err))
+            _LOGGER.error("Error fetching energy data: %s", redact_for_log(err))
             raise UpdateFailed(
                 f"Error fetching energy data: {redact_for_log(err)}"
             ) from err
@@ -152,7 +152,7 @@ class EnergyDataCoordinator(DataUpdateCoordinator):
                 await self._fetch_utility_data(utility_type, start_ms, end_ms)
 
         except Exception as err:
-            _LOGGER.exception("Error fetching from API: %s", redact_for_log(err))
+            _LOGGER.error("Error fetching from API: %s", redact_for_log(err))
             raise
 
     async def _fetch_utility_data(
@@ -236,7 +236,7 @@ class EnergyDataCoordinator(DataUpdateCoordinator):
                     )
 
         except Exception as err:
-            _LOGGER.exception(
+            _LOGGER.error(
                 "Error storing %s data: %s",
                 utility_type,
                 redact_for_log(err),

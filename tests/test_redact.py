@@ -28,12 +28,15 @@ def test_redact_for_log_masks_sensitive_mapping_values():
 
 def test_redact_for_log_masks_sensitive_text_patterns():
     result = redact.redact_for_log(
-        "Bearer abc.def.ghi for person@example.com account 123456789"
+        "Bearer abc.def.ghi for person@example.com account 123456789 "
+        "password=super-secret token=tok-secret"
     )
 
     assert "abc.def.ghi" not in result
     assert "person@example.com" not in result
     assert "123456789" not in result
+    assert "super-secret" not in result
+    assert "tok-secret" not in result
     assert "Bearer ***REDACTED***" in result
     assert "***REDACTED_EMAIL***" in result
     assert "***REDACTED_NUMBER***" in result

@@ -129,7 +129,7 @@ class UtilityAPIClient:
                 return True
 
         except Exception as err:
-            _LOGGER.exception("Error during authentication: %s", redact_for_log(err))
+            _LOGGER.error("Error during authentication: %s", redact_for_log(err))
             return False
 
     async def get_usage_data(
@@ -246,7 +246,7 @@ class UtilityAPIClient:
                 return data
 
         except Exception as err:
-            _LOGGER.exception("Error retrieving usage data: %s", redact_for_log(err))
+            _LOGGER.error("Error retrieving usage data: %s", redact_for_log(err))
             return None
 
     async def close(self) -> None:

@@ -32,6 +32,11 @@ EMAIL_RE = re.compile(
     r"(?<![A-Za-z0-9._%+-])[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"
 )
 BEARER_RE = re.compile(r"\bBearer\s+[A-Za-z0-9._~+/=-]+", re.IGNORECASE)
+KEY_VALUE_SECRET_RE = re.compile(
+    r"\b(password|passwd|token|access_token|accessToken|authorizationToken)"
+    r"\s*[:=]\s*['\"]?[^,\s'\"}]+",
+    re.IGNORECASE,
+)
 LONG_NUMBER_RE = re.compile(r"\b\d{5,}\b")
 
 
@@ -62,6 +67,7 @@ def redact_for_log(value: Any, max_length: int = 500) -> str:
             text = json.dumps(redacted, sort_keys=True, default=str)
         except TypeError:
             text = str(redacted)
+    text = _redact_text(text)
 
     if len(text) > max_length:
         return f"{text[:max_length]}..."
@@ -91,6 +97,7 @@ def _mask_identifier(value: Any) -> str:
 
 def _redact_text(text: str) -> str:
     text = BEARER_RE.sub("Bearer ***REDACTED***", text)
+    text = KEY_VALUE_SECRET_RE.sub(r"\1=***REDACTED***", text)
     text = EMAIL_RE.sub("***REDACTED_EMAIL***", text)
     text = LONG_NUMBER_RE.sub("***REDACTED_NUMBER***", text)
     return text

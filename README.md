@@ -138,6 +138,22 @@ uv run pytest
 python -m compileall custom_components/hsv_utilities_energy
 ```
 
+### API Testing
+
+The default test suite uses mocked SmartHub responses and does not call the live API. It covers authentication responses, polling behavior, timeout wiring, malformed JSON, service defaults, and log redaction.
+
+Live SmartHub tests are opt-in:
+
+```bash
+$env:HSV_UTIL_USERNAME="your-smarthub-login"
+$env:HSV_UTIL_PASSWORD="your-smarthub-password"
+$env:HSV_UTIL_SERVICE_LOCATION="your-service-location-number"
+$env:HSV_UTIL_ACCOUNT_NUMBER="your-account-number"
+uv run pytest --run-live-smarthub tests/live
+```
+
+The live test uses electric-only data for a one-day window and checks response shape without printing the raw payload. The older `.env.example` names are also accepted: `UTILITY_USERNAME`, `UTILITY_PASSWORD`, `SERVICE_LOCATION_NUMBER`, and `ACCOUNT_NUMBER`.
+
 ## License
 
 MIT License. See [LICENSE](LICENSE).
