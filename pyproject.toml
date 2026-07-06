@@ -21,4 +21,7 @@ dependencies = [
 dev = [
     "ipykernel>=7.1.0",
     "pre-commit>=4.5.0",
+    "pytest>=8.0.0",
+    "ruff>=0.14.3",
+    "voluptuous>=0.14.2",
 ]

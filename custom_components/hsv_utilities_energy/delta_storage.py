@@ -268,8 +268,9 @@ class EnergyDataCache:
         Returns list of dicts with 'hour_start' (datetime) and 'value' (float).
         """
         import logging
+
         _LOGGER = logging.getLogger(__name__)
-        
+
         records = self.read_usage_data(utility_type=utility_type, data_type=data_type)
 
         if not records:
@@ -304,7 +305,7 @@ class EnergyDataCache:
             {"hour_start": hour, "value": value}
             for hour, value in sorted(hourly.items())
         ]
-        
+
         if result:
             _LOGGER.info(
                 "Hourly aggregation: %d hours from %s to %s",

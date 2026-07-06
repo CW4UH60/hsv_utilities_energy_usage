@@ -1,9 +1,27 @@
 refresh_data:
   name: Refresh Data
   description: Manually trigger a data refresh from the HSV Utilities API.
-  fields: {}
+  fields:
+    entry_id:
+      name: Entry ID
+      description: Optional config entry ID. Required when more than one HSV Utilities Energy entry is loaded.
+      required: false
+      selector:
+        text:
 
 clear_statistics:
   name: Clear Statistics
-  description: Clear all energy statistics and rebuild them from scratch. Use this if your graphs look incorrect or have gaps.
-  fields: {}
+  description: Clear cached data and rebuild energy statistics from scratch. Use this if your graphs look incorrect or have gaps.
+  fields:
+    confirm_rebuild:
+      name: Confirm Rebuild
+      description: Must be true before statistics will be rebuilt.
+      required: true
+      selector:
+        boolean:
+    entry_id:
+      name: Entry ID
+      description: Optional config entry ID. Required when more than one HSV Utilities Energy entry is loaded.
+      required: false
+      selector:
+        text:

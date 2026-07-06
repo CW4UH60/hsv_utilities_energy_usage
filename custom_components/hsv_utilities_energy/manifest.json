@@ -8,10 +8,10 @@
   "dependencies": [
     "recorder"
   ],
-  "documentation": "https://github.com/bcperry/hsv-utilities-energy-integration",
+  "documentation": "https://github.com/CW4UH60/hsv_utilities_energy_usage",
   "integration_type": "hub",
   "iot_class": "cloud_polling",
-  "issue_tracker": "https://github.com/bcperry/hsv-utilities-energy-integration/issues",
+  "issue_tracker": "https://github.com/CW4UH60/hsv_utilities_energy_usage/issues",
   "requirements": [],
   "version": "0.2.3"
 }

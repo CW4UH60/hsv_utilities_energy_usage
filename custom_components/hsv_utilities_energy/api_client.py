@@ -8,10 +8,21 @@ from typing import Any, Optional
 
 import aiohttp
 
+from .const import DEFAULT_REQUEST_TIMEOUT, DEFAULT_UTILITY_TYPES
+from .redact import redact_for_log
+
 
 def _build_threaded_connector() -> aiohttp.TCPConnector:
     """Create a connector that avoids aiodns/pycares issues by using threaded resolver."""
     return aiohttp.TCPConnector(resolver=aiohttp.ThreadedResolver())
+
+
+def _build_client_session(timeout: aiohttp.ClientTimeout) -> aiohttp.ClientSession:
+    """Create a client session with resolver and timeout defaults."""
+    return aiohttp.ClientSession(
+        connector=_build_threaded_connector(),
+        timeout=timeout,
+    )
 
 
 _LOGGER = logging.getLogger(__name__)
@@ -25,6 +36,7 @@ class UtilityAPIClient:
         username: str,
         password: str,
         session: aiohttp.ClientSession | None = None,
+        request_timeout: int = DEFAULT_REQUEST_TIMEOUT,
     ) -> None:
         """Initialize the API client."""
         self.username = username
@@ -33,19 +45,26 @@ class UtilityAPIClient:
         self.auth_url = f"{self.base_url}/services/oauth/auth/v2"
         self._session = session
         self._own_session = session is None
+        self._timeout = aiohttp.ClientTimeout(total=request_timeout)
         self.access_token: Optional[str] = None
 
     async def __aenter__(self):
         """Async context manager entry."""
         if self._own_session:
             # Use threaded resolver to dodge aiodns Channel.getaddrinfo signature errors in this container
-            self._session = aiohttp.ClientSession(connector=_build_threaded_connector())
+            self._session = _build_client_session(self._timeout)
         return self
 
     async def __aexit__(self, *args):
         """Async context manager exit."""
-        if self._own_session and self._session:
-            await self._session.close()
+        await self.close()
+
+    def _ensure_session(self) -> aiohttp.ClientSession:
+        """Return an active session, creating one when this client owns it."""
+        if not self._session:
+            self._session = _build_client_session(self._timeout)
+            self._own_session = True
+        return self._session
 
     async def authenticate(self) -> bool:
         """Authenticate with the utility provider's OAuth endpoint."""
@@ -54,11 +73,7 @@ class UtilityAPIClient:
         try:
             _LOGGER.debug("Authenticating with %s", self.auth_url)
 
-            if not self._session:
-                self._session = aiohttp.ClientSession(
-                    connector=_build_threaded_connector()
-                )
-                self._own_session = True
+            session = self._ensure_session()
 
             headers = {
                 "Content-Type": "application/x-www-form-urlencoded",
@@ -66,19 +81,18 @@ class UtilityAPIClient:
                 "User-Agent": "HomeAssistant-HSV-Utilities/0.1",
             }
 
-            async with self._session.post(
+            async with session.post(
                 self.auth_url,
                 data=payload,
                 headers=headers,
+                timeout=self._timeout,
             ) as response:
                 status = response.status
-                text = await response.text()
 
                 if status != 200:
                     _LOGGER.error(
-                        "Authentication failed. status=%s body=%s",
+                        "Authentication failed. endpoint=auth status=%s",
                         status,
-                        text.strip(),
                     )
                     return False
 
@@ -87,9 +101,8 @@ class UtilityAPIClient:
                     auth_response = await response.json()
                 except Exception:
                     _LOGGER.error(
-                        "Authentication response not JSON. status=%s body=%s",
+                        "Authentication response was not JSON. endpoint=auth status=%s",
                         status,
-                        text.strip(),
                     )
                     return False
 
@@ -104,19 +117,19 @@ class UtilityAPIClient:
 
                 if not self.access_token:
                     _LOGGER.error(
-                        "Authentication succeeded but no access token in response: %s",
-                        auth_response,
+                        "Authentication succeeded but no access token in response. keys=%s",
+                        redact_for_log(list(auth_response.keys()))
+                        if isinstance(auth_response, dict)
+                        else type(auth_response).__name__,
                     )
                     return False
 
                 _LOGGER.info("Authentication successful; token obtained")
-                self._session.headers.update(
-                    {"Authorization": f"Bearer {self.access_token}"}
-                )
+                session.headers.update({"Authorization": f"Bearer {self.access_token}"})
                 return True
 
         except Exception as err:
-            _LOGGER.exception("Error during authentication: %s", err)
+            _LOGGER.exception("Error during authentication: %s", redact_for_log(err))
             return False
 
     async def get_usage_data(
@@ -148,7 +161,7 @@ class UtilityAPIClient:
             Usage data response from API or None on error
         """
         if industries is None:
-            industries = ["ELECTRIC", "GAS"]
+            industries = list(DEFAULT_UTILITY_TYPES)
 
         usage_url = f"{self.base_url}/services/secured/utility-usage/poll"
 
@@ -172,23 +185,20 @@ class UtilityAPIClient:
                 end_datetime,
             )
 
-            if not self._session:
-                self._session = aiohttp.ClientSession(
-                    connector=_build_threaded_connector()
-                )
-                self._own_session = True
+            session = self._ensure_session()
 
             # Initial request
-            async with self._session.post(
+            async with session.post(
                 usage_url,
                 json=payload,
                 headers={"Content-Type": "application/json"},
+                timeout=self._timeout,
             ) as response:
                 if response.status != 200:
                     _LOGGER.error(
-                        "Failed to retrieve usage data. Status: %s, Response: %s",
+                        "Failed to retrieve usage data. endpoint=usage status=%s industries=%s",
                         response.status,
-                        await response.text(),
+                        redact_for_log(industries),
                     )
                     return None
 
@@ -202,15 +212,20 @@ class UtilityAPIClient:
                 await asyncio.sleep(retry_delay)
 
                 # Poll again
-                async with self._session.post(
+                async with session.post(
                     usage_url,
                     json=payload,
                     headers={"Content-Type": "application/json"},
+                    timeout=self._timeout,
                 ) as response:
                     if response.status == 200:
                         data = await response.json()
                     else:
-                        _LOGGER.error("Polling failed with status %s", response.status)
+                        _LOGGER.error(
+                            "Usage polling failed. endpoint=usage status=%s industries=%s",
+                            response.status,
+                            redact_for_log(industries),
+                        )
                         return None
 
             # Check final status
@@ -231,10 +246,11 @@ class UtilityAPIClient:
                 return data
 
         except Exception as err:
-            _LOGGER.exception("Error retrieving usage data: %s", err)
+            _LOGGER.exception("Error retrieving usage data: %s", redact_for_log(err))
             return None
 
     async def close(self) -> None:
         """Close the session."""
         if self._own_session and self._session:
             await self._session.close()
+        self._session = None

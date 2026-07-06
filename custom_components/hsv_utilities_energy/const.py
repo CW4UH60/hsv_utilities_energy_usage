@@ -18,11 +18,12 @@ CONF_UTILITY_TYPES: Final = "utility_types"
 
 # Default values
 DEFAULT_DATA_PATH: Final = "/config/energy_data"
+DEFAULT_REQUEST_TIMEOUT: Final = 30
 DEFAULT_UPDATE_INTERVAL: Final = (
     900  # 15 minutes in seconds (matches data source interval)
 )
 DEFAULT_FETCH_DAYS: Final = 30  # Fetch last 30 days to build up history
-DEFAULT_UTILITY_TYPES: Final = ["ELECTRIC", "GAS"]
+DEFAULT_UTILITY_TYPES: Final = ["ELECTRIC"]
 
 # Update interval
 UPDATE_INTERVAL = timedelta(seconds=DEFAULT_UPDATE_INTERVAL)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from typing import Any
 
@@ -10,6 +11,7 @@ import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.data_entry_flow import FlowResult
+from homeassistant.helpers import selector
 
 from .const import (
     CONF_ACCOUNT_NUMBER,
@@ -26,8 +28,15 @@ from .const import (
     DEFAULT_UTILITY_TYPES,
     DOMAIN,
 )
+from .redact import mask_identifier, redact_for_log
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _entry_unique_id(service_location: str, account_number: str) -> str:
+    """Build a privacy-preserving unique ID for this utility account."""
+    raw_key = "|".join([service_location.strip(), account_number.strip()])
+    return hashlib.sha256(raw_key.encode()).hexdigest()[:24]
 
 
 async def validate_credentials(
@@ -50,11 +59,14 @@ async def validate_credentials(
                     "Authentication failed. Please check your credentials."
                 )
 
-        return {"title": f"HSV Utilities ({service_location})"}
+        return {"title": f"HSV Utilities ({mask_identifier(service_location)})"}
 
     except Exception as err:
-        _LOGGER.exception("Unexpected error validating credentials")
-        raise ValueError(f"Error validating credentials: {err}") from err
+        _LOGGER.exception(
+            "Unexpected error validating credentials: %s",
+            redact_for_log(err),
+        )
+        raise ValueError("Error validating credentials") from err
 
 
 class HSVUtilitiesEnergyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -69,6 +81,13 @@ class HSVUtilitiesEnergyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         errors: dict[str, str] = {}
 
         if user_input is not None:
+            unique_id = _entry_unique_id(
+                user_input[CONF_SERVICE_LOCATION],
+                user_input[CONF_ACCOUNT_NUMBER],
+            )
+            await self.async_set_unique_id(unique_id)
+            self._abort_if_unique_id_configured()
+
             try:
                 info = await validate_credentials(
                     self.hass,
@@ -78,7 +97,7 @@ class HSVUtilitiesEnergyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                     user_input[CONF_ACCOUNT_NUMBER],
                 )
             except ValueError as err:
-                _LOGGER.warning("Validation error: %s", err)
+                _LOGGER.warning("Validation error: %s", redact_for_log(err))
                 errors["base"] = "invalid_auth"
             except Exception:  # pylint: disable=broad-except
                 _LOGGER.exception("Unexpected exception during validation")
@@ -99,8 +118,12 @@ class HSVUtilitiesEnergyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 ): cv.string,
                 vol.Required(
                     CONF_PASSWORD,
-                    default=user_input.get(CONF_PASSWORD) if user_input else "",
-                ): cv.string,
+                    default="",
+                ): selector.TextSelector(
+                    selector.TextSelectorConfig(
+                        type=selector.TextSelectorType.PASSWORD,
+                    )
+                ),
                 vol.Required(
                     CONF_SERVICE_LOCATION,
                     default=user_input.get(CONF_SERVICE_LOCATION) if user_input else "",

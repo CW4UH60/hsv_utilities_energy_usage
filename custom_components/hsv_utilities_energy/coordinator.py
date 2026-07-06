@@ -24,6 +24,7 @@ from .const import (
     UTILITY_TYPE_ELECTRIC,
 )
 from .delta_storage import EnergyDataCache
+from .redact import redact_for_log
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -65,23 +66,29 @@ class EnergyDataCoordinator(DataUpdateCoordinator):
         # Flag to force rebuild of statistics (ignores existing stats)
         self._force_rebuild = False
 
+    async def async_close(self) -> None:
+        """Close owned resources."""
+        if self._api_client is not None:
+            await self._api_client.close()
+            self._api_client = None
+
     async def async_clear_statistics(self) -> None:
         """Clear all statistics for this integration and force rebuild.
-        
+
         Note: We cannot directly clear statistics due to HA recorder thread restrictions.
         Instead, we force a rebuild which will overwrite existing statistics.
         """
         _LOGGER.info("Rebuilding all HSV Utilities Energy statistics from scratch")
-        
+
         # Clear the in-memory cache
         self._cache = EnergyDataCache()
-        
+
         # Set flag to force rebuild (ignores existing statistics)
         self._force_rebuild = True
-        
+
         # Trigger a refresh to rebuild statistics
         await self.async_request_refresh()
-        
+
         _LOGGER.info("Statistics rebuild complete")
 
     async def _async_update_data(self) -> dict[str, Any]:
@@ -108,8 +115,10 @@ class EnergyDataCoordinator(DataUpdateCoordinator):
             return self._read_aggregated_data()
 
         except Exception as err:
-            _LOGGER.exception("Error fetching energy data: %s", err)
-            raise UpdateFailed(f"Error fetching energy data: {err}") from err
+            _LOGGER.exception("Error fetching energy data: %s", redact_for_log(err))
+            raise UpdateFailed(
+                f"Error fetching energy data: {redact_for_log(err)}"
+            ) from err
 
     async def _fetch_and_store_data(self) -> None:
         """Fetch data from API and store in Delta Lake."""
@@ -143,7 +152,7 @@ class EnergyDataCoordinator(DataUpdateCoordinator):
                 await self._fetch_utility_data(utility_type, start_ms, end_ms)
 
         except Exception as err:
-            _LOGGER.exception("Error fetching from API: %s", err)
+            _LOGGER.exception("Error fetching from API: %s", redact_for_log(err))
             raise
 
     async def _fetch_utility_data(
@@ -170,7 +179,11 @@ class EnergyDataCoordinator(DataUpdateCoordinator):
             self._store_data_sync(utility_type, usage_data)
 
         except Exception as err:
-            _LOGGER.warning("Error fetching %s data: %s", utility_type, err)
+            _LOGGER.warning(
+                "Error fetching %s data: %s",
+                utility_type,
+                redact_for_log(err),
+            )
 
     def _store_data_sync(self, utility_type: str, api_data: dict) -> None:
         """Store API data in the in-memory cache."""
@@ -219,11 +232,15 @@ class EnergyDataCoordinator(DataUpdateCoordinator):
                         records_written,
                         utility_type,
                         save_type.lower(),
-                        meter_number,
+                        redact_for_log(meter_number),
                     )
 
         except Exception as err:
-            _LOGGER.exception("Error storing %s data: %s", utility_type, err)
+            _LOGGER.exception(
+                "Error storing %s data: %s",
+                utility_type,
+                redact_for_log(err),
+            )
 
     async def _import_to_statistics(self) -> None:
         """Import cached data to Home Assistant statistics."""
@@ -239,7 +256,7 @@ class EnergyDataCoordinator(DataUpdateCoordinator):
                 utility_type=utility_type,
                 data_type=DATA_TYPE_COST,
             )
-        
+
         # Reset force rebuild flag after import
         self._force_rebuild = False
 
@@ -291,7 +308,7 @@ class EnergyDataCoordinator(DataUpdateCoordinator):
         last_stat_time = None
         last_stat_sum = 0.0
         last_stat_state = 0.0
-        
+
         if not self._force_rebuild:
             # Get the last known statistics to continue the cumulative sum
             last_stats = await get_instance(self.hass).async_add_executor_job(
@@ -307,7 +324,10 @@ class EnergyDataCoordinator(DataUpdateCoordinator):
                     # Convert to datetime if it's a timestamp
                     if isinstance(last_stat_time, (int, float)):
                         from datetime import timezone
-                        last_stat_time = datetime.fromtimestamp(last_stat_time, tz=timezone.utc)
+
+                        last_stat_time = datetime.fromtimestamp(
+                            last_stat_time, tz=timezone.utc
+                        )
                     _LOGGER.info(
                         "Last %s %s stat: sum=%.2f state=%.2f at %s",
                         utility_type,
@@ -318,7 +338,7 @@ class EnergyDataCoordinator(DataUpdateCoordinator):
                     )
                 else:
                     last_stat_time = None
-        
+
         if last_stat_time is None:
             _LOGGER.info(
                 "Building %s %s statistics from scratch (%d hourly records)",
@@ -332,7 +352,7 @@ class EnergyDataCoordinator(DataUpdateCoordinator):
         # (so we can re-import the last hour with updated data)
         cumulative_sum = last_stat_sum - last_stat_state if last_stat_time else 0.0
         statistics: list[StatisticData] = []
-        
+
         # Ensure last_stat_time is timezone-aware UTC for comparison
         if last_stat_time and last_stat_time.tzinfo is None:
             last_stat_time = last_stat_time.replace(tzinfo=timezone.utc)
@@ -389,7 +409,9 @@ class EnergyDataCoordinator(DataUpdateCoordinator):
                 utility_data["usage"] = usage_agg
             except Exception as err:
                 _LOGGER.warning(
-                    "Could not fetch usage data for %s: %s", utility_type, err
+                    "Could not fetch usage data for %s: %s",
+                    utility_type,
+                    redact_for_log(err),
                 )
                 unit = "KWH" if utility_type == UTILITY_TYPE_ELECTRIC else "CCF"
                 utility_data["usage"] = {
@@ -412,7 +434,9 @@ class EnergyDataCoordinator(DataUpdateCoordinator):
                 utility_data["cost"] = cost_agg
             except Exception as err:
                 _LOGGER.warning(
-                    "Could not fetch cost data for %s: %s", utility_type, err
+                    "Could not fetch cost data for %s: %s",
+                    utility_type,
+                    redact_for_log(err),
                 )
                 utility_data["cost"] = {
                     "last_24h": 0.0,

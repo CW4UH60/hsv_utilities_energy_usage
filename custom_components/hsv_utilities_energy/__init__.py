@@ -4,11 +4,7 @@ from __future__ import annotations
 
 import logging
 from datetime import timedelta
-
-import voluptuous as vol
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import Platform
-from homeassistant.core import HomeAssistant, ServiceCall
+from typing import TYPE_CHECKING, Any
 
 from .const import (
     CONF_ACCOUNT_NUMBER,
@@ -21,23 +17,63 @@ from .const import (
     CONF_UTILITY_TYPES,
     DEFAULT_FETCH_DAYS,
     DEFAULT_UPDATE_INTERVAL,
+    DEFAULT_UTILITY_TYPES,
     DOMAIN,
 )
-from .coordinator import EnergyDataCoordinator
+from .schemas import (
+    ATTR_ENTRY_ID,
+    SERVICE_CLEAR_STATISTICS_SCHEMA,
+    SERVICE_REFRESH_DATA_SCHEMA,
+)
+
+if TYPE_CHECKING:
+    from homeassistant.config_entries import ConfigEntry
+    from homeassistant.core import HomeAssistant, ServiceCall
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS: list[Platform] = [Platform.SENSOR]
+try:
+    from homeassistant.const import Platform
+except ModuleNotFoundError as err:
+    if err.name != "homeassistant":
+        raise
+    PLATFORMS: list[str] = ["sensor"]
+else:
+    PLATFORMS: list[Platform] = [Platform.SENSOR]
 
 SERVICE_REFRESH_DATA = "refresh_data"
 SERVICE_CLEAR_STATISTICS = "clear_statistics"
 
-SERVICE_REFRESH_DATA_SCHEMA = vol.Schema({})
-SERVICE_CLEAR_STATISTICS_SCHEMA = vol.Schema({})
+
+def _coordinators_for_service(
+    hass: HomeAssistant,
+    entry_id: str | None,
+) -> list[Any]:
+    """Return coordinators targeted by a service call."""
+    from homeassistant.exceptions import HomeAssistantError
+
+    coordinators: dict[str, Any] = hass.data.get(DOMAIN, {})
+
+    if entry_id:
+        coordinator = coordinators.get(entry_id)
+        if coordinator is None:
+            raise HomeAssistantError(
+                f"No HSV Utilities Energy config entry found for entry_id {entry_id}"
+            )
+        return [coordinator]
+
+    if len(coordinators) != 1:
+        raise HomeAssistantError(
+            "Specify entry_id when multiple HSV Utilities Energy entries are loaded"
+        )
+
+    return [next(iter(coordinators.values()))]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up HSV Utilities Energy from a config entry."""
+    from .coordinator import EnergyDataCoordinator
+
     _LOGGER.info("Setting up HSV Utilities Energy integration")
 
     # Get configuration
@@ -50,7 +86,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         CONF_UPDATE_INTERVAL, DEFAULT_UPDATE_INTERVAL
     )
     fetch_days = entry.data.get(CONF_FETCH_DAYS, DEFAULT_FETCH_DAYS)
-    utility_types = entry.data.get(CONF_UTILITY_TYPES, ["ELECTRIC", "GAS"])
+    utility_types = entry.data.get(CONF_UTILITY_TYPES, DEFAULT_UTILITY_TYPES)
 
     # Create coordinator
     coordinator = EnergyDataCoordinator(
@@ -77,13 +113,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     async def async_refresh_data(call: ServiceCall) -> None:
         """Manually refresh energy data."""
         _LOGGER.info("Manual data refresh requested")
-        await coordinator.async_request_refresh()
+        for target_coordinator in _coordinators_for_service(
+            hass,
+            call.data.get(ATTR_ENTRY_ID),
+        ):
+            await target_coordinator.async_request_refresh()
 
     # Register service to clear and rebuild statistics
     async def async_clear_statistics(call: ServiceCall) -> None:
         """Clear all statistics and rebuild from scratch."""
         _LOGGER.info("Clear statistics requested")
-        await coordinator.async_clear_statistics()
+        for target_coordinator in _coordinators_for_service(
+            hass,
+            call.data.get(ATTR_ENTRY_ID),
+        ):
+            await target_coordinator.async_clear_statistics()
 
     if not hass.services.has_service(DOMAIN, SERVICE_REFRESH_DATA):
         hass.services.async_register(
@@ -116,6 +160,12 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Remove coordinator from hass.data
     if unload_ok:
-        hass.data[DOMAIN].pop(entry.entry_id)
+        coordinator = hass.data[DOMAIN].pop(entry.entry_id, None)
+        if coordinator is not None:
+            await coordinator.async_close()
+
+        if not hass.data[DOMAIN]:
+            hass.services.async_remove(DOMAIN, SERVICE_REFRESH_DATA)
+            hass.services.async_remove(DOMAIN, SERVICE_CLEAR_STATISTICS)
 
     return unload_ok

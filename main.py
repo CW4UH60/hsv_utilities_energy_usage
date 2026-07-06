@@ -8,19 +8,33 @@ from typing import Optional
 import requests
 from dotenv import load_dotenv
 
+from custom_components.hsv_utilities_energy.const import (
+    DEFAULT_REQUEST_TIMEOUT,
+    DEFAULT_UTILITY_TYPES,
+)
+from custom_components.hsv_utilities_energy.redact import (
+    mask_identifier,
+    redact_for_log,
+)
 from delta_storage import EnergyDeltaStorage
 
 
 class UtilityAPIClient:
     """Client for interacting with HSV Utility SmartHub API."""
 
-    def __init__(self, username: str, password: str):
+    def __init__(
+        self,
+        username: str,
+        password: str,
+        request_timeout: int = DEFAULT_REQUEST_TIMEOUT,
+    ):
         self.username = username
         self.password = password
         self.base_url = "https://hsvutil.smarthub.coop"
         self.auth_url = f"{self.base_url}/services/oauth/auth/v2"
         self.session = requests.Session()
         self.access_token: Optional[str] = None
+        self.request_timeout = request_timeout
 
     def authenticate(self) -> bool:
         """
@@ -38,6 +52,7 @@ class UtilityAPIClient:
                 self.auth_url,
                 data=payload,
                 headers={"Content-Type": "application/x-www-form-urlencoded"},
+                timeout=self.request_timeout,
             )
 
             if response.status_code == 200:
@@ -62,11 +77,10 @@ class UtilityAPIClient:
                 print(
                     f"✗ Authentication failed with status code: {response.status_code}"
                 )
-                print(f"Response: {response.text}")
                 return False
 
         except requests.exceptions.RequestException as e:
-            print(f"✗ Error during authentication: {e}")
+            print(f"✗ Error during authentication: {redact_for_log(e)}")
             return False
 
     def get_usage_data(
@@ -99,7 +113,7 @@ class UtilityAPIClient:
             dict: Usage data response from API
         """
         if industries is None:
-            industries = ["WATER", "GAS", "ELECTRIC"]
+            industries = list(DEFAULT_UTILITY_TYPES)
 
         usage_url = f"{self.base_url}/services/secured/utility-usage/poll"
 
@@ -122,14 +136,16 @@ class UtilityAPIClient:
 
             # Initial request
             response = self.session.post(
-                usage_url, json=payload, headers={"Content-Type": "application/json"}
+                usage_url,
+                json=payload,
+                headers={"Content-Type": "application/json"},
+                timeout=self.request_timeout,
             )
 
             if response.status_code != 200:
                 print(
                     f"✗ Failed to retrieve usage data. Status code: {response.status_code}"
                 )
-                print(f"Response: {response.text}")
                 return None
 
             data = response.json()
@@ -146,6 +162,7 @@ class UtilityAPIClient:
                     usage_url,
                     json=payload,
                     headers={"Content-Type": "application/json"},
+                    timeout=self.request_timeout,
                 )
 
                 if response.status_code == 200:
@@ -174,7 +191,7 @@ class UtilityAPIClient:
                 return data
 
         except requests.exceptions.RequestException as e:
-            print(f"✗ Error retrieving usage data: {e}")
+            print(f"✗ Error retrieving usage data: {redact_for_log(e)}")
             return None
 
 
@@ -206,8 +223,8 @@ def parse_arguments():
         "--industries",
         nargs="+",
         choices=["WATER", "GAS", "ELECTRIC"],
-        default=["WATER", "GAS", "ELECTRIC"],
-        help="Industries to query (default: all)",
+        default=DEFAULT_UTILITY_TYPES,
+        help="Industries to query (default: ELECTRIC)",
     )
     parser.add_argument(
         "-o", "--output", help="Output file path for JSON data (optional)"
@@ -405,7 +422,7 @@ def main():
 
                             total_records += records_written
                             print(
-                                f"✓ Saved {records_written} {industry.lower()} {data_type.lower()} records (meter: {meter_number}, {unit_of_measure})"
+                                f"✓ Saved {records_written} {industry.lower()} {data_type.lower()} records (meter: {mask_identifier(meter_number)}, {unit_of_measure})"
                             )
 
             # Save fetch metadata for each industry queried
@@ -453,11 +470,7 @@ def main():
         elif args.no_save:
             # Print formatted JSON to console if not saving to Delta
             print("\nData preview:")
-            print(
-                json.dumps(usage_data, indent=2)[:1000] + "..."
-                if len(str(usage_data)) > 1000
-                else json.dumps(usage_data, indent=2)
-            )
+            print(redact_for_log(usage_data, max_length=1000))
     else:
         print("\n✗ Failed to retrieve usage data.")
         sys.exit(1)

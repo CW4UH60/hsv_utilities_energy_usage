@@ -20,9 +20,9 @@
           "service_location_number": "Your service location number (found in SmartHub)",
           "account_number": "Your account number (found in SmartHub)",
           "data_path": "Where to store energy data (default: /config/energy_data)",
-          "update_interval": "How often to fetch new data (300-86400 seconds, default: 3600 = 1 hour)",
+          "update_interval": "How often to fetch new data (300-86400 seconds, default: 900 = 15 minutes)",
           "fetch_days": "Number of days of historical data to fetch each time (1-30 days)",
-          "utility_types": "Select which utilities to monitor"
+          "utility_types": "Select which utilities to monitor (default: Electric)"
         }
       }
     },
