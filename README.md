@@ -72,14 +72,30 @@ For each enabled utility type, the integration creates usage and cost sensors.
 
 | Sensor | Description | Unit | State Class |
 | --- | --- | --- | --- |
-| Electric Usage | Recent electric consumption | kWh | `total_increasing` |
-| Electric Cost | Recent electric cost from SmartHub | USD | `total_increasing` |
-| Gas Usage | Recent gas consumption, if enabled | CCF or source unit | `total_increasing` |
-| Gas Cost | Recent gas cost, if enabled | USD | `total_increasing` |
+| Electric Usage | Rolling 24-hour electric consumption | kWh | `measurement` |
+| Electric Cost | Rolling 24-hour electric cost from SmartHub | USD | `measurement` |
+| Gas Usage | Rolling 24-hour gas consumption, if enabled | CCF or source unit | `measurement` |
+| Gas Cost | Rolling 24-hour gas cost, if enabled | USD | `measurement` |
 
 Sensor attributes include today, yesterday, last 24 hours, last update, and data lag where available.
 
 SmartHub data is delayed. Treat it as billing reconciliation data, not as a live load meter.
+
+### Billing-period sensors
+
+For every enabled utility, the integration also exposes SmartHub's exact
+billing periods:
+
+| Sensor suffix | Description |
+| --- | --- |
+| Unbilled Usage / Cost | The open billing period, using SmartHub's current start date |
+| Current Bill Usage / Cost | The most recently closed billing period |
+| Previous Bill Usage / Cost | The closed billing period before the current bill |
+
+These sensors include `period_start`, `period_end`, `data_through`, and
+`data_lag_hours` attributes. The dates come from SmartHub's monthly interval
+metadata rather than a fixed day-of-month reset, so a shifted meter-read date is
+picked up automatically on the next refresh.
 
 ## Services
 
