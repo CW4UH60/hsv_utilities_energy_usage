@@ -17,6 +17,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api_client import UtilityAPIClient
+from .billing_periods import extract_billing_periods
 from .const import (
     DATA_TYPE_COST,
     DATA_TYPE_USAGE,
@@ -65,6 +66,8 @@ class EnergyDataCoordinator(DataUpdateCoordinator):
         self._api_client = None
         # Flag to force rebuild of statistics (ignores existing stats)
         self._force_rebuild = False
+        # Exact open and closed billing periods returned by SmartHub.
+        self._billing_periods: dict[str, dict[str, dict[str, Any]]] = {}
 
     async def async_close(self) -> None:
         """Close owned resources."""
@@ -150,6 +153,7 @@ class EnergyDataCoordinator(DataUpdateCoordinator):
             # Fetch usage data for each utility type
             for utility_type in self.utility_types:
                 await self._fetch_utility_data(utility_type, start_ms, end_ms)
+                await self._fetch_billing_period_data(utility_type, end_time)
 
         except Exception as err:
             _LOGGER.error("Error fetching from API: %s", redact_for_log(err))
@@ -181,6 +185,48 @@ class EnergyDataCoordinator(DataUpdateCoordinator):
         except Exception as err:
             _LOGGER.warning(
                 "Error fetching %s data: %s",
+                utility_type,
+                redact_for_log(err),
+            )
+
+    async def _fetch_billing_period_data(
+        self, utility_type: str, end_time: datetime
+    ) -> None:
+        """Fetch monthly totals and exact billing-period metadata."""
+        try:
+            start_time = end_time - timedelta(days=400)
+            monthly_data = await self._api_client.get_usage_data(
+                service_location_number=self.service_location_number,
+                account_number=self.account_number,
+                start_datetime=int(start_time.timestamp() * 1000),
+                end_datetime=int(end_time.timestamp() * 1000),
+                time_frame="MONTHLY",
+                industries=[utility_type],
+                include_demand=False,
+            )
+            if not monthly_data or "data" not in monthly_data:
+                _LOGGER.warning(
+                    "No monthly billing-period data received for %s", utility_type
+                )
+                return
+
+            billing_periods = extract_billing_periods(monthly_data, utility_type)
+            if billing_periods:
+                self._billing_periods[utility_type] = billing_periods
+                _LOGGER.info(
+                    "Loaded SmartHub billing periods for %s: %s",
+                    utility_type,
+                    ", ".join(billing_periods),
+                )
+            else:
+                _LOGGER.warning(
+                    "Monthly data for %s did not contain billing-period metadata",
+                    utility_type,
+                )
+        except Exception as err:
+            # Preserve the last valid periods when a metadata refresh fails.
+            _LOGGER.warning(
+                "Error fetching %s billing periods: %s",
                 utility_type,
                 redact_for_log(err),
             )
@@ -398,7 +444,11 @@ class EnergyDataCoordinator(DataUpdateCoordinator):
         data = {}
 
         for utility_type in self.utility_types:
-            utility_data = {"usage": {}, "cost": {}}
+            utility_data = {
+                "usage": {},
+                "cost": {},
+                "billing_periods": self._billing_periods.get(utility_type, {}),
+            }
 
             # Get usage data from cache
             try:

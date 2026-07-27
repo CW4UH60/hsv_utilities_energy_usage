@@ -35,28 +35,28 @@ SENSOR_TYPES = {
         "unit": "kWh",
         "icon": "mdi:flash",
         "device_class": "energy",
-        "state_class": "total_increasing",
+        "state_class": "measurement",
     },
     "electric_cost": {
         "name": "Electric Cost",
         "unit": "USD",
         "icon": "mdi:currency-usd",
         "device_class": "monetary",
-        "state_class": "total_increasing",
+        "state_class": "measurement",
     },
     "gas_usage": {
         "name": "Gas Usage",
         "unit": "CCF",
         "icon": "mdi:fire",
         "device_class": "gas",
-        "state_class": "total_increasing",
+        "state_class": "measurement",
     },
     "gas_cost": {
         "name": "Gas Cost",
         "unit": "USD",
         "icon": "mdi:currency-usd",
         "device_class": "monetary",
-        "state_class": "total_increasing",
+        "state_class": "measurement",
     },
 }
 
