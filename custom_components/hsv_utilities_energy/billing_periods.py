@@ -160,15 +160,17 @@ def _serialize_period(record: dict[str, Any], period_key: str) -> dict[str, Any]
 
 
 def _smarthub_wall_date(timestamp_ms: int):
-    """Return the Central wall-clock date encoded in a SmartHub timestamp."""
-    return datetime.fromtimestamp(timestamp_ms / 1000, tz=timezone.utc).date()
+    """Return the America/Chicago date represented by an interval timestamp."""
+    return (
+        datetime.fromtimestamp(timestamp_ms / 1000, tz=timezone.utc)
+        .astimezone(HSV_TIMEZONE)
+        .date()
+    )
 
 
 def _smarthub_timestamp_to_utc(timestamp_ms: int) -> datetime:
-    """Interpret a SmartHub wall-clock timestamp and convert it to real UTC."""
-    encoded_utc = datetime.fromtimestamp(timestamp_ms / 1000, tz=timezone.utc)
-    local_wall_time = encoded_utc.replace(tzinfo=None).replace(tzinfo=HSV_TIMEZONE)
-    return local_wall_time.astimezone(timezone.utc)
+    """Return the real UTC timestamp supplied in billing interval metadata."""
+    return datetime.fromtimestamp(timestamp_ms / 1000, tz=timezone.utc)
 
 
 def _is_far_future(timestamp_ms: int | None) -> bool:
