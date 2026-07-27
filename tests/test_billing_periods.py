@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 from component_loader import load_component_module
 
@@ -6,8 +7,9 @@ billing_periods = load_component_module("billing_periods")
 
 
 def api_timestamp(year, month, day):
-    """Encode a SmartHub Central wall-clock date as a UTC timestamp."""
-    return int(datetime(year, month, day, tzinfo=timezone.utc).timestamp() * 1000)
+    """Encode midnight in SmartHub's America/Chicago timezone."""
+    local = datetime(year, month, day, tzinfo=ZoneInfo("America/Chicago"))
+    return int(local.astimezone(timezone.utc).timestamp() * 1000)
 
 
 UNBILLED_X = api_timestamp(9999, 12, 1)
